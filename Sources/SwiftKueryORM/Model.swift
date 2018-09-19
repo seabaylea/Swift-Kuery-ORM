@@ -232,7 +232,8 @@ public extension Model {
     let columns = table.columns.filter({$0.autoIncrement != true && values[$0.name] != nil})
     let parameters: [Any?] = columns.map({values[$0.name]!})
     let parameterPlaceHolders: [Parameter] = parameters.map {_ in return Parameter()}
-    let query = Insert(into: table, columns: columns, values: parameterPlaceHolders)
+    let query = Insert(into: table, columns: columns, values: parameterPlaceHolders, returnID: true)
+    //let query = Insert(into: table, columns: columns, values: parameterPlaceHolders)
     self.executeQuery(query: query, parameters: parameters, using: db, onCompletion)
   }
 
@@ -370,8 +371,37 @@ public extension Model {
             onCompletion(nil, Self.convertError(error))
             return
           }
-
-          onCompletion(self, nil)
+          
+          // CB Start
+          
+          var dictionaryTitleToValue = [String: Any?]()
+          
+          guard let rows = result.asRows, rows.count > 0 else {
+            onCompletion(nil, RequestError(.ormNotFound, reason: "Could not retrieve value for Query: \(String(describing: query))"))
+            return
+          }
+          
+          dictionaryTitleToValue = rows[0]
+          
+          guard let value = dictionaryTitleToValue[Self.idColumnName] else {
+            onCompletion(nil, RequestError(.ormNotFound, reason: "Could not find return id"))
+            return
+          }
+          
+          var decodedModel: Self
+          do {
+            var values = try DatabaseEncoder().encode(self)
+            values[Self.idColumnName] = value
+            decodedModel = try DatabaseDecoder().decode(Self.self, values)
+          } catch {
+            onCompletion(nil, Self.convertError(error))
+            return
+          }
+          
+          onCompletion(decodedModel, nil)
+ 
+          //onCompletion(self, nil)
+          // CB END
         }
       }
     }
